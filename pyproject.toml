@@ -30,6 +30,7 @@ dependencies = [
     "transformers>=4.51.3",
     "langchain>=0.3.25",
     "openai>=1.79.0",
+    "ollama>=0.4.8",
 ]
 
 [project.urls]
