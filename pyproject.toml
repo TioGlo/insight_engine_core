@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "insight-engine-core"
+version = "0.0.1"
+authors = [
+  { name="Tio", email="sdali4239@gmail.com" },
+]
+description = "Core RAG and data analysis framework for trend identification."
+readme = "README.md"
+
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License", # Or your chosen license
+    "Operating System :: OS Independent",
+]
+
+requires-python = ">=3.13"
+
+dependencies = [
+    "sqlalchemy>=2.0",
+    "psycopg2-binary>=2.9", # For PostgreSQL connection (or psycopg for v3+)
+    "python-dotenv>=1.0.0",
+    "pgvector>=0.2.0", # For PGVector support with SQLAlchemy
+    # We'll add more as we go: sentence-transformers, requests, praw, pytrends, etc.
+    "sentence-transformers>=4.1.0",
+    "torch>=2.7.0",
+    "transformers>=4.51.3",
+]
+
+[project.urls]
+"Homepage" = "https://github.com/deleuzer/insight_engine_core" # Example
+"Bug Tracker" = "https://github.com/deleuzer/insight_engine_core/issues" # Example
