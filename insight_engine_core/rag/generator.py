@@ -15,14 +15,16 @@ class Generator:
         context_docs_str = "Context:\n"
         if len(context_docs) == 0:
             return ""
-        else:
-            for context_doc in context_docs:
-                context_docs_str += f"{str(context_doc.chunk_id)}. {context_doc.chunk_text}\n"
-            return context_docs_str
+
+        context_parts = ["Context:"]
+        for i, doc in enumerate(context_docs):
+            # Use 1-based indexing for human-readable list
+            context_parts.append(f"{i + 1}. {doc.chunk_text.strip()}")
+        return "\n".join(context_parts)
 
     def _construct_prompt(self, query: str, formatted_context: str) -> str:
         if formatted_context != "":
-            prompt = (f"{formatted_context}\nBased on the above context, answer the following question:\n"
+            prompt = (f"{formatted_context}\n\nBased on the above context, answer the following question:\n"
                       f"Question: {query}")
         else:
             prompt = f"Answer the following question:\nQuestion: {query}"
