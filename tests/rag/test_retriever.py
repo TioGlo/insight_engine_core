@@ -57,3 +57,42 @@ class TestRetriever:
         assert len(results) == 2
         assert results == retrieved_docs_mock
         assert results[0].chunk_text == "Challenge 1: Funding"
+
+    def test_retrieve_documents_with_metadata_filter(self, mocker: MockerFixture):
+        """
+        Tests that the Retriever correctly passes metadata filters
+        to the VectorStore.
+        This test will fail if Retriever.retrieve doesn't handle filter_metadata.
+        """
+        query_text = "Startups needing funding"
+        query_embedding_mock = np.array([0.5, 0.6, 0.7, 0.8])
+        metadata_filter = {"category": "finance", "stage": "seed"}
+
+        mock_embedder = MagicMock(spec=Embedder)
+        mock_embedder.embed.return_value = query_embedding_mock
+
+        mock_vector_store = MagicMock(spec=VectorStore)
+        # VectorStore returns an empty list for this test, we're just checking it was called correctly
+        mock_vector_store.similarity_search.return_value = []
+
+        retriever = Retriever(embedder=mock_embedder, vector_store=mock_vector_store)
+
+        top_k = 3
+        # --- Call the method with the filter ---
+        results = retriever.retrieve(
+            query_text,
+            top_k=top_k,
+            filter_metadata=metadata_filter  # Pass the filter
+        )
+
+        # --- Assertions ---
+        mock_embedder.embed.assert_called_once_with(query_text)
+
+        # Assert that similarity_search was called with the metadata_filter
+        mock_vector_store.similarity_search.assert_called_once_with(
+            query_embedding=query_embedding_mock,
+            top_k=top_k,
+            filter_metadata=metadata_filter  # Crucial part of the assertion
+        )
+
+        assert results == []  # Based on our mock_vector_store setup

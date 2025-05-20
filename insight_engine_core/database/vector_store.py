@@ -94,6 +94,8 @@ class VectorStore:
         Returns:
             List of SimilaritySearchResult objects.
         """
+        if top_k <= 0:
+            raise ValueError("'top_k' must be greater than 0.")
         if not isinstance(query_embedding, np.ndarray):
             # PGVector expects a list or ndarray. Ensure it's in a usable format.
             # Or convert to list: query_embedding.tolist()
@@ -114,17 +116,24 @@ class VectorStore:
                 TextChunk.processed_text_source_id,
                 TextChunk.embedding.cosine_distance(query_embedding).label("distance")  # Calculate distance
             )
+            # TODO: Add .where() clause here for metadata filtering if filter_metadata is provided
             .order_by(TextChunk.embedding.cosine_distance(query_embedding))  # Order by distance
             .limit(top_k)
         )
 
-        # TODO: Add metadata filtering if filter_metadata is provided
-        # This would involve adding .where() clauses based on JSONB operators on TextChunk.metadata_
+        # Example for metadata filtering (if filter_metadata is like {"topic": "animals"})
+        # This is a basic example; more complex JSONB querying might be needed.
+        if filter_metadata:
+            for key, value in filter_metadata.items():
+                # This searches for top-level key-value pairs in the JSONB metadata_ column
+                # For nested search or more complex conditions, use SQLAlchemy's JSONB functions/operators
+                stmt = stmt.where(TextChunk.metadata_[key].astext == str(value))
 
         results = self.db.execute(stmt).fetchall()  # fetchall() gives list of Row objects
 
         search_results = []
         for row in results:
+            # The row object can be accessed by index or by label (e.g., row.distance)
             search_results.append(
                 SimilaritySearchResult(
                     chunk_id=row.id,
