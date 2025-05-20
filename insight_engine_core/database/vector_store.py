@@ -1,8 +1,18 @@
-from typing import List, Dict, Any
+from dataclasses import dataclass
+from typing import List, Dict, Any, Optional
 import numpy as np
 from sqlalchemy.orm import Session
+from sqlalchemy import select, func as sql_func # For func.l2_distance, etc.
 from ..database.models import TextChunk  # Assuming TextChunk model is defined
 
+
+@dataclass
+class SimilaritySearchResult:
+    chunk_id: int
+    chunk_text: str
+    metadata: Dict[str, Any]
+    processed_text_source_id: int
+    distance: Optional[float] = None  # PGVector can return distance
 
 # from ..processing.embedder import EMBEDDING_DIMENSION # Or get from config/model
 # For now, assume dimension matches what's in TextChunk.embedding column
@@ -70,3 +80,58 @@ class VectorStore:
         return db_text_chunks
 
     # We will add similarity_search method next
+    def similarity_search(self,
+                          query_embedding: np.ndarray,
+                          top_k: int = 5,
+                          filter_metadata: Optional[Dict[str, Any]] = None  # For future use
+                          ) -> List[SimilaritySearchResult]:
+        """
+        Performs a similarity search against the stored text chunks.
+        Args:
+            query_embedding: NumPy array of the query embedding.
+            top_k: Number of top similar results to return.
+            filter_metadata: Optional dictionary to filter results by metadata. (Not implemented yet)
+        Returns:
+            List of SimilaritySearchResult objects.
+        """
+        if not isinstance(query_embedding, np.ndarray):
+            # PGVector expects a list or ndarray. Ensure it's in a usable format.
+            # Or convert to list: query_embedding.tolist()
+            pass
+
+        # PGVector distance operators:
+        # <-> : L2 distance
+        # <#> : negative inner product (for normalized vectors, maximizing inner product is minimizing this)
+        # <=> : cosine distance (1 - cosine_similarity)
+        # We'll use cosine distance as it's common for semantic similarity.
+
+        # Build the query
+        stmt = (
+            select(
+                TextChunk.id,
+                TextChunk.chunk_text,
+                TextChunk.metadata_,
+                TextChunk.processed_text_source_id,
+                TextChunk.embedding.cosine_distance(query_embedding).label("distance")  # Calculate distance
+            )
+            .order_by(TextChunk.embedding.cosine_distance(query_embedding))  # Order by distance
+            .limit(top_k)
+        )
+
+        # TODO: Add metadata filtering if filter_metadata is provided
+        # This would involve adding .where() clauses based on JSONB operators on TextChunk.metadata_
+
+        results = self.db.execute(stmt).fetchall()  # fetchall() gives list of Row objects
+
+        search_results = []
+        for row in results:
+            search_results.append(
+                SimilaritySearchResult(
+                    chunk_id=row.id,
+                    chunk_text=row.chunk_text,
+                    metadata=row.metadata_,
+                    processed_text_source_id=row.processed_text_source_id,
+                    distance=row.distance
+                )
+            )
+        return search_results

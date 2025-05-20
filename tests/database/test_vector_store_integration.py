@@ -7,6 +7,7 @@ from insight_engine_core.config import DATABASE_URL  # Your actual PG database U
 from insight_engine_core.config import MODEL_EMBEDDING_DIM
 from insight_engine_core.database.models import Base, TextChunk, ProcessedText, RawDataItem, DataSource
 from insight_engine_core.database.vector_store import VectorStore
+from typing import List, Dict, Any
 
 # Mark all tests in this file as integration tests requiring PostgreSQL
 pytestmark = [
