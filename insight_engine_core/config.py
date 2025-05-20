@@ -27,6 +27,7 @@ DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://user:password@host:port/d
 
 # --- Embedding Model Configuration ---
 EMBEDDING_MODEL_NAME = os.getenv("EMBEDDING_MODEL_NAME", "all-MiniLM-L6-v2")
+MODEL_EMBEDDING_DIM = 384
 # For local models, this could also be a path
 
 # --- LLM Configuration (examples, will be expanded) ---

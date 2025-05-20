@@ -52,7 +52,7 @@ class VectorStore:
             db_chunk = TextChunk(
                 processed_text_source_id=processed_text_source_ids[i],
                 chunk_text=text_chunk_str,
-                embedding=embeddings[i].tolist(),  # PGVector expects a list or NumPy array
+                embedding=embeddings[i],  # PGVector expects a list or NumPy array
                 metadata_=metadata,
                 chunk_order=order
             )

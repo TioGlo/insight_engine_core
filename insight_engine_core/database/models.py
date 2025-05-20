@@ -2,41 +2,11 @@ from sqlalchemy import Column, Integer, String, Text, DateTime, JSON, ForeignKey
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from pgvector.sqlalchemy import Vector  # For PGVector
+from insight_engine_core.config import MODEL_EMBEDDING_DIM
 
 # Import THE Base instance from database/__init__.py
 from . import Base  # This should get Base from database/__init__.py
 
-# from ..config import EMBEDDING_DIMENSION # We'll get this from the embedder instance later if needed for table creation
-# For now, let's assume a common dimension or make it configurable during table creation if possible.
-# The embedder.py now has EMBEDDING_DIMENSION as a global after model load.
-
-# It's tricky to use a dynamic EMBEDDING_DIMENSION directly in the model definition
-# as it's class-level. A common practice is to set it to a known default or make the
-# table creation script aware of it. For now, we'll hardcode a common one and note it.
-# If EMBEDDING_DIMENSION from embedder.py is available at import time here, we could use it.
-# Let's try to import it, but it might create an import cycle if embedder imports config which imports this.
-# A better way is to pass dimension when creating table or use a fixed known one.
-# For now, let's use a placeholder and assume it matches the default model.
-# The embedder.py has EMBEDDING_DIMENSION, let's try to import it.
-# try:
-#     from ..processing.embedder import EMBEDDING_DIMENSION as DYNAMIC_EMBEDDING_DIMENSION
-#
-#     print(f"models.py: Successfully imported DYNAMIC_EMBEDDING_DIMENSION: {DYNAMIC_EMBEDDING_DIMENSION}")
-#     # If the model in embedder.py hasn't loaded yet, DYNAMIC_EMBEDDING_DIMENSION might be None
-#     # We need a fallback or ensure embedder loads first.
-#     # For simplicity in model definition, often a fixed value or a value from a central config is used.
-#     # Let's use a default and verify it matches the loaded model's dimension.
-#     # If DYNAMIC_EMBEDDING_DIMENSION is None here, it means the embedder model hasn't loaded yet.
-#     # This highlights a potential init order issue if models depend on dynamic config from other modules.
-#     # For now, we'll use a common default and ensure our default model matches.
-#     MODEL_EMBEDDING_DIM = DYNAMIC_EMBEDDING_DIMENSION if DYNAMIC_EMBEDDING_DIMENSION is not None else 384  # Fallback for all-MiniLM-L6-v2
-#     if DYNAMIC_EMBEDDING_DIMENSION is not None and DYNAMIC_EMBEDDING_DIMENSION != MODEL_EMBEDDING_DIM:
-#         print(
-#             f"WARNING: Mismatch or dynamic load issue. Model dimension from embedder: {DYNAMIC_EMBEDDING_DIMENSION}, Using in Vector(): {MODEL_EMBEDDING_DIM}")
-#
-# except ImportError:
-#     print("models.py: Could not import DYNAMIC_EMBEDDING_DIMENSION from embedder. Using default 384.")
-MODEL_EMBEDDING_DIM = 384  # Default for all-MiniLM-L6-v2
 print(f"models.py: Using embedding dimension for Vector type: {MODEL_EMBEDDING_DIM}")
 
 
