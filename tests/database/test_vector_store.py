@@ -53,91 +53,80 @@ def sample_processed_text(db_session: Session) -> ProcessedText:
     db_session.commit()  # Commit to get processed_text.id and make it available
     return processed_text
 
-
-# tests/database/test_vector_store.py
-# ... (imports) ...
-
 # No need for db_session fixture or sample_processed_text for this pure unit test approach
 # if we mock out all DB interactions.
 
 class TestVectorStoreAddDocumentsPureUnit:
     def test_add_single_document_logic(self, mocker: MockerFixture):
-        mock_db_session = MagicMock(spec=Session)  # Mock the SQLAlchemy Session
-
-        # Mock the TextChunk class/constructor
-        # When TextChunk is called, it returns a MagicMock instance
-        mock_text_chunk_class = mocker.patch('insight_engine_core.database.vector_store.TextChunk', autospec=True)
+        mock_db_session = MagicMock(spec=Session)
+        mock_text_chunk_class_constructor = mocker.patch('insight_engine_core.database.vector_store.TextChunk',
+                                                         autospec=True)
+        mock_created_chunk_instance = mock_text_chunk_class_constructor.return_value
 
         vector_store = VectorStore(mock_db_session)
 
         processed_text_ids = [1]
         chunks = ["This is chunk 1."]
-        embeddings = [np.array([0.1, 0.2, 0.3])]
+        embedding_np = np.array([0.1, 0.2, 0.3])  # This is what's passed in the list to add_documents
         metadatas = [{"source_page": 1}]
         chunk_orders = [0]
 
         created_mock_chunks = vector_store.add_documents(
             processed_text_source_ids=processed_text_ids,
             chunks=chunks,
-            embeddings=embeddings,
+            embeddings=[embedding_np],  # Pass the np.array
             metadatas=metadatas,
             chunk_orders=chunk_orders
         )
 
-        # Assert TextChunk constructor was called correctly
-        mock_text_chunk_class.assert_called_once_with(
-            processed_text_source_id=1,
-            chunk_text="This is chunk 1.",
-            embedding=[0.1, 0.2, 0.3],  # .tolist() is done inside add_documents
-            metadata_={"source_page": 1},
-            chunk_order=0
-        )
+        mock_text_chunk_class_constructor.assert_called_once()
+        args, kwargs = mock_text_chunk_class_constructor.call_args
 
-        # Assert db.add_all was called with the list containing the mock TextChunk instance
-        # The instance returned by mock_text_chunk_class() is itself a mock
-        mock_db_session.add_all.assert_called_once()
-        # Check that the argument to add_all was a list containing the instance our mocked TextChunk returned
-        assert mock_db_session.add_all.call_args[0][0][0] is mock_text_chunk_class.return_value
+        assert kwargs['processed_text_source_id'] == 1
+        assert kwargs['chunk_text'] == "This is chunk 1."
+        # Expect TextChunk to be called with the np.ndarray directly
+        assert isinstance(kwargs['embedding'], np.ndarray)
+        assert np.array_equal(kwargs['embedding'], embedding_np)  # Use np.array_equal
+        assert kwargs['metadata_'] == {"source_page": 1}
+        assert kwargs['chunk_order'] == 0
 
-        # Assert the returned list contains the mock TextChunk instance
+        mock_db_session.add_all.assert_called_once_with([mock_created_chunk_instance])  # Pass the list
         assert len(created_mock_chunks) == 1
-        assert created_mock_chunks[0] is mock_text_chunk_class.return_value
-
-        # Assert flush was called
+        assert created_mock_chunks[0] is mock_created_chunk_instance
         mock_db_session.flush.assert_called_once()
 
-    def test_add_multiple_documents_with_metadata_and_orders_logic(self, mocker: MockerFixture):
+    def test_add_multiple_documents_logic(self, mocker: MockerFixture):
         mock_db_session = MagicMock(spec=Session)
-        mock_text_chunk_instances = [MagicMock(name=f"MockChunkMeta_{i}") for i in range(2)]
-        mock_text_chunk_class = mocker.patch(
+        n_docs = 3
+        mock_text_chunk_instances = [MagicMock(name=f"MockChunk_{i}") for i in range(n_docs)]
+        mock_text_chunk_class_constructor = mocker.patch(
             'insight_engine_core.database.vector_store.TextChunk',
             side_effect=mock_text_chunk_instances
         )
 
         vector_store = VectorStore(mock_db_session)
 
-        processed_text_ids = [100, 200]
-        chunks = ["Meta chunk 0", "Meta chunk 1"]
-        embeddings = [np.array([0.1, 0.1]), np.array([0.2, 0.2])]
-        metadatas = [{"id": "m0"}, {"id": "m1"}]
-        chunk_orders = [5, 6]
+        processed_text_ids = [10, 20, 30]
+        chunks = [f"Chunk num {i}" for i in range(n_docs)]
+        embeddings_np_list = [np.array([i / 10, (i + 1) / 10, (i + 2) / 10]) for i in range(n_docs)]
 
         created_mock_chunks = vector_store.add_documents(
             processed_text_source_ids=processed_text_ids,
             chunks=chunks,
-            embeddings=embeddings,
-            metadatas=metadatas,
-            chunk_orders=chunk_orders
+            embeddings=embeddings_np_list
         )
 
-        expected_calls = [
-            call(processed_text_source_id=100, chunk_text="Meta chunk 0", embedding=[0.1, 0.1], metadata_={"id": "m0"},
-                 chunk_order=5),
-            call(processed_text_source_id=200, chunk_text="Meta chunk 1", embedding=[0.2, 0.2], metadata_={"id": "m1"},
-                 chunk_order=6)
-        ]
-        mock_text_chunk_class.assert_has_calls(expected_calls, any_order=False)
-        assert mock_text_chunk_class.call_count == 2
+        assert mock_text_chunk_class_constructor.call_count == n_docs
+        actual_calls = mock_text_chunk_class_constructor.call_args_list
+        for i in range(n_docs):
+            args, kwargs = actual_calls[i]
+            assert kwargs['processed_text_source_id'] == processed_text_ids[i]
+            assert kwargs['chunk_text'] == chunks[i]
+            assert isinstance(kwargs['embedding'], np.ndarray)
+            assert np.array_equal(kwargs['embedding'], embeddings_np_list[i])
+            assert kwargs['metadata_'] == {}
+            assert kwargs['chunk_order'] == i
+
         mock_db_session.add_all.assert_called_once_with(mock_text_chunk_instances)
         assert created_mock_chunks == mock_text_chunk_instances
         mock_db_session.flush.assert_called_once()
