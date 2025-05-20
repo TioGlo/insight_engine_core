@@ -28,8 +28,16 @@ dependencies = [
     "sentence-transformers>=4.1.0",
     "torch>=2.7.0",
     "transformers>=4.51.3",
+    "langchain>=0.3.25",
 ]
 
 [project.urls]
 "Homepage" = "https://github.com/deleuzer/insight_engine_core" # Example
 "Bug Tracker" = "https://github.com/deleuzer/insight_engine_core/issues" # Example
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3.5",
+    "pytest-cov>=6.1.1",
+    "pytest-mock>=3.14.0",
+]

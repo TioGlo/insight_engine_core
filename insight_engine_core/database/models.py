@@ -18,26 +18,25 @@ from . import Base  # This should get Base from database/__init__.py
 # A better way is to pass dimension when creating table or use a fixed known one.
 # For now, let's use a placeholder and assume it matches the default model.
 # The embedder.py has EMBEDDING_DIMENSION, let's try to import it.
-try:
-    from ..processing.embedder import EMBEDDING_DIMENSION as DYNAMIC_EMBEDDING_DIMENSION
-
-    print(f"models.py: Successfully imported DYNAMIC_EMBEDDING_DIMENSION: {DYNAMIC_EMBEDDING_DIMENSION}")
-    # If the model in embedder.py hasn't loaded yet, DYNAMIC_EMBEDDING_DIMENSION might be None
-    # We need a fallback or ensure embedder loads first.
-    # For simplicity in model definition, often a fixed value or a value from a central config is used.
-    # Let's use a default and verify it matches the loaded model's dimension.
-    # If DYNAMIC_EMBEDDING_DIMENSION is None here, it means the embedder model hasn't loaded yet.
-    # This highlights a potential init order issue if models depend on dynamic config from other modules.
-    # For now, we'll use a common default and ensure our default model matches.
-    MODEL_EMBEDDING_DIM = DYNAMIC_EMBEDDING_DIMENSION if DYNAMIC_EMBEDDING_DIMENSION is not None else 384  # Fallback for all-MiniLM-L6-v2
-    if DYNAMIC_EMBEDDING_DIMENSION is not None and DYNAMIC_EMBEDDING_DIMENSION != MODEL_EMBEDDING_DIM:
-        print(
-            f"WARNING: Mismatch or dynamic load issue. Model dimension from embedder: {DYNAMIC_EMBEDDING_DIMENSION}, Using in Vector(): {MODEL_EMBEDDING_DIM}")
-
-except ImportError:
-    print("models.py: Could not import DYNAMIC_EMBEDDING_DIMENSION from embedder. Using default 384.")
-    MODEL_EMBEDDING_DIM = 384  # Default for all-MiniLM-L6-v2
-
+# try:
+#     from ..processing.embedder import EMBEDDING_DIMENSION as DYNAMIC_EMBEDDING_DIMENSION
+#
+#     print(f"models.py: Successfully imported DYNAMIC_EMBEDDING_DIMENSION: {DYNAMIC_EMBEDDING_DIMENSION}")
+#     # If the model in embedder.py hasn't loaded yet, DYNAMIC_EMBEDDING_DIMENSION might be None
+#     # We need a fallback or ensure embedder loads first.
+#     # For simplicity in model definition, often a fixed value or a value from a central config is used.
+#     # Let's use a default and verify it matches the loaded model's dimension.
+#     # If DYNAMIC_EMBEDDING_DIMENSION is None here, it means the embedder model hasn't loaded yet.
+#     # This highlights a potential init order issue if models depend on dynamic config from other modules.
+#     # For now, we'll use a common default and ensure our default model matches.
+#     MODEL_EMBEDDING_DIM = DYNAMIC_EMBEDDING_DIMENSION if DYNAMIC_EMBEDDING_DIMENSION is not None else 384  # Fallback for all-MiniLM-L6-v2
+#     if DYNAMIC_EMBEDDING_DIMENSION is not None and DYNAMIC_EMBEDDING_DIMENSION != MODEL_EMBEDDING_DIM:
+#         print(
+#             f"WARNING: Mismatch or dynamic load issue. Model dimension from embedder: {DYNAMIC_EMBEDDING_DIMENSION}, Using in Vector(): {MODEL_EMBEDDING_DIM}")
+#
+# except ImportError:
+#     print("models.py: Could not import DYNAMIC_EMBEDDING_DIMENSION from embedder. Using default 384.")
+MODEL_EMBEDDING_DIM = 384  # Default for all-MiniLM-L6-v2
 print(f"models.py: Using embedding dimension for Vector type: {MODEL_EMBEDDING_DIM}")
 
 
