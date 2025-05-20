@@ -1,44 +1,37 @@
 import os
-from dotenv import load_dotenv
 
-# Load environment variables from .env file that should be in the root
-# of the application using this library (e.g., niche_hunter_app/.env)
-# The library itself shouldn't bundle a .env file.
-# Applications using this library are responsible for providing the .env
-project_root_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")) # Go up 2 levels to trend_analysis_platform
-dotenv_path = os.path.join(project_root_path, '.env')
-
-if os.path.exists(dotenv_path):
-    load_dotenv(dotenv_path=dotenv_path)
-else:
-    # Fallback if .env is not in the overarching project root,
-    # try loading from the application's root if this library is installed.
-    # This part is tricky for a library; usually, the app loads its own .env.
-    # For now, we'll assume the app (like niche_hunter_app) will call load_dotenv()
-    # or the .env is at the very top level as structured.
-    # A better approach for libraries is to expect config to be passed in or env vars to be pre-set.
-    print(f"Warning: .env file not found at {dotenv_path}. Relying on pre-set environment variables.")
-    load_dotenv() # Tries to load .env from current dir or parent dirs if not found at root
-
+# This library expects environment variables to be set by the consuming application.
+# It can define defaults here if environment variables are not found.
 
 # --- Database Configuration ---
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://user:password@host:port/dbname")
-# Example for local PostgreSQL: "postgresql://youruser:yourpass@localhost:5432/insight_db"
+# DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://user:password@host:port/default_db_name_if_not_set")
+# insight_engine_core/insight_engine_core/config.py
+DATABASE_URL = os.getenv("DATABASE_URL")
+if DATABASE_URL is None:
+    # Option A: Raise an error if not set by consuming app
+    # raise EnvironmentError("DATABASE_URL environment variable not set by the application.")
+    # Option B: Log a warning and proceed (might fail later, as it did)
+    print("WARNING: insight_engine_core.config - DATABASE_URL not set. Engine creation might fail.")
+    DATABASE_URL = "postgresql://invalid_user:invalid_pass@invalid_host:0000/invalid_db" # A clearly invalid default
 
 # --- Embedding Model Configuration ---
 EMBEDDING_MODEL_NAME = os.getenv("EMBEDDING_MODEL_NAME", "all-MiniLM-L6-v2")
-MODEL_EMBEDDING_DIM = 384
-# For local models, this could also be a path
+# Try to get dimension from an env var, or set a default based on default model
+# This is still tricky for model definition, as models.py needs this at import time.
+# A common pattern is to require the app to configure this or use a fixed known dimension.
+DEFAULT_EMBEDDING_DIM = 384 # For all-MiniLM-L6-v2
+MODEL_EMBEDDING_DIM = int(os.getenv("EMBEDDING_DIMENSION", DEFAULT_EMBEDDING_DIM))
 
-# --- LLM Configuration (examples, will be expanded) ---
+# --- LLM Configuration ---
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")
 # Add other LLM API keys or local model paths here
 
 # --- Other API Keys ---
 PERPLEXITY_API_KEY = os.getenv("PERPLEXITY_API_KEY")
-REDDIT_CLIENT_ID = os.getenv("REDDIT_CLIENT_ID")
-REDDIT_CLIENT_SECRET = os.getenv("REDDIT_CLIENT_SECRET")
-REDDIT_USER_AGENT = os.getenv("REDDIT_USER_AGENT", "InsightEngine/0.1 by YourUsername")
+# REDDIT_CLIENT_ID = os.getenv("REDDIT_CLIENT_ID")
+# REDDIT_CLIENT_SECRET = os.getenv("REDDIT_CLIENT_SECRET")
+# REDDIT_USER_AGENT = os.getenv("REDDIT_USER_AGENT", "InsightEngine/0.1 by YourUsername")
 
 
 # --- Basic Logging Configuration (can be expanded in utils/logging_setup.py) ---
