@@ -3,9 +3,10 @@ from typing import List, Dict, Any, Optional
 import openai  # Ensure this is installed: uv pip install openai>=1.3.0
 
 from .base_llm import BaseLLM  # Import the abstract base class
+from insight_engine_core import config as core_config
+# from ..config import OPENAI_API_KEY as CONFIG_OPENAI_API_KEY  # Import API key from global config
 
-from ..config import OPENAI_API_KEY as CONFIG_OPENAI_API_KEY  # Import API key from global config
-
+CONFIG_OPENAI_API_KEY = core_config.get_openai_api_key()
 
 class OpenAILLM(BaseLLM):
     """
@@ -135,6 +136,7 @@ if __name__ == '__main__':
     # This basic test requires OPENAI_API_KEY to be set in the environment
     # and for the config.py to load it.
     print("Testing OpenAILLM...")
+    CONFIG_OPENAI_API_KEY = core_config.get_openai_api_key()
     if not CONFIG_OPENAI_API_KEY and not os.getenv("OPENAI_API_KEY"):
         print("Skipping OpenAILLM direct test: OPENAI_API_KEY not found.")
     else:
@@ -147,7 +149,7 @@ if __name__ == '__main__':
 
             # Test with context
             print("\n--- Test 2: With context ---")
-            llm_context = OpenAILLM(model_name="gpt-3.5-turbo")  # Can specify model
+            llm_context = OpenAILLM(model_name="gpt-4o-mini")  # Can specify model
             context_str = "The Eiffel Tower is a famous landmark in Paris."
             response2 = llm_context.generate(
                 prompt="What is Paris famous for?",

@@ -3,7 +3,9 @@ from unittest.mock import MagicMock, patch
 from pytest_mock import MockerFixture
 
 from insight_engine_core.llm_interface.openai_llm import OpenAILLM  # Will fail: not created yet
-from insight_engine_core.config import OPENAI_API_KEY  # For checking if key is set
+from insight_engine_core import config as core_config
+
+OPENAI_API_KEY = core_config.get_openai_api_key()
 
 # Skip tests if OPENAI_API_KEY is not set in environment for actual calls (though we mock them)
 # This is more for if you had integration tests later. For mocked tests, it's less critical.

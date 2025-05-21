@@ -1,216 +1,243 @@
+# insight_engine_core/tests/processing/test_embedder.py
+
 import pytest
 import numpy as np
-from unittest.mock import MagicMock, patch
-import importlib # Make sure this is imported
-from pytest_mock import MockerFixture
-import insight_engine_core.processing.embedder as embedder_module_to_test # Import at top
-from insight_engine_core.config import EMBEDDING_MODEL_NAME # Get the name from config
+from unittest.mock import patch, MagicMock
+
+# Import the class to be tested
+from insight_engine_core.processing.embedder import Embedder
+# Import the config module to mock its functions
+import insight_engine_core.config as core_config
+
+# Default model name and dimension for consistent testing
+TEST_MODEL_NAME = "test-model-name"
+TEST_MODEL_DIMENSION = 128  # Example dimension for the test model
 
 
-def test_embedder_initialization_and_embed(mocker: MockerFixture):
-    # 1. Define what our mock SentenceTransformer constructor should return for the GLOBAL model
-    mock_global_model_instance = MagicMock(name="MockedST_GlobalInstance")
-    mock_global_model_instance.get_sentence_embedding_dimension.return_value = 384
-    mock_global_model_instance.encode.return_value = np.array([0.1, 0.2, 0.3])  # For global model's embed
+# --- Mocks for SentenceTransformer ---
+@pytest.fixture
+def mock_sentence_transformer_instance():
+    """Mocks a SentenceTransformer model instance."""
+    mock_model = MagicMock()
+    mock_model.get_sentence_embedding_dimension.return_value = TEST_MODEL_DIMENSION
 
-    # 2. Reload the module
-    importlib.reload(embedder_module_to_test)
+    def mock_encode(texts, batch_size=None, show_progress_bar=None):  # Add other args if used
+        if isinstance(texts, str):  # Single text
+            return np.random.rand(TEST_MODEL_DIMENSION).astype(np.float32)
+        # Batch of texts
+        return np.random.rand(len(texts), TEST_MODEL_DIMENSION).astype(np.float32)
 
-    # 3. Patch SentenceTransformer on the reloaded module
-    #    Initially, configure it to handle the global model load.
-    #    We'll use a side_effect to change its behavior later for the specific model test.
-
-    mock_specific_model_instance = MagicMock(name="MockedST_SpecificInstance")
-    mock_specific_model_instance.get_sentence_embedding_dimension.return_value = 768  # Different dimension
-    mock_specific_model_instance.encode.return_value = np.array([0.5, 0.6])  # Different embedding
-
-    def constructor_side_effect(model_name_arg):
-        print(f"TEST MOCK ST CONSTRUCTOR: Called with '{model_name_arg}'")
-        if model_name_arg == EMBEDDING_MODEL_NAME:  # Default global model
-            print(f"TEST MOCK ST CONSTRUCTOR: Returning global mock for '{model_name_arg}'")
-            return mock_global_model_instance
-        elif model_name_arg == "specific_model_test":
-            print(f"TEST MOCK ST CONSTRUCTOR: Returning specific mock for '{model_name_arg}'")
-            return mock_specific_model_instance
-        else:
-            # If called with an unexpected model name, raise an error or return a generic mock
-            raise ValueError(f"Mock SentenceTransformer called with unexpected model name: {model_name_arg}")
-
-    # Patch SentenceTransformer on the reloaded module using the side_effect
-    # The mock object returned by mocker.patch.object IS the constructor mock itself
-    the_mocked_constructor = mocker.patch.object(
-        embedder_module_to_test,
-        'SentenceTransformer',
-        side_effect=constructor_side_effect
-    )
-
-    Embedder_reloaded = embedder_module_to_test.Embedder
-
-    # --- Test Global Model Path ---
-    print("TEST: Instantiating Embedder for global model...")
-    embedder_global = Embedder_reloaded()
-
-    the_mocked_constructor.assert_any_call(EMBEDDING_MODEL_NAME)  # Check it was called for global
-
-    assert embedder_global.model is mock_global_model_instance, \
-        f"Global embedder model is {embedder_global.model}, expected {mock_global_model_instance}"
-    assert embedder_global.get_dimension() == 384
-
-    text_global = "hello global"
-    embedding_global = embedder_global.embed(text_global)
-    mock_global_model_instance.encode.assert_called_once_with(text_global, convert_to_numpy=True)
-    assert isinstance(embedding_global, np.ndarray)
-    assert np.array_equal(embedding_global, np.array([0.1, 0.2, 0.3]))
-
-    # --- Test Instance-Specific Model Path ---
-    print("TEST: Instantiating Embedder for specific model...")
-    # The side_effect on the_mocked_constructor is still active and will handle this new model_name
-    embedder_specific = Embedder_reloaded(model_name="specific_model_test")
-
-    the_mocked_constructor.assert_any_call("specific_model_test")  # Check it was called for specific
-
-    assert embedder_specific.model is mock_specific_model_instance, \
-        f"Specific embedder model is {embedder_specific.model}, expected {mock_specific_model_instance}"
-    assert embedder_specific.get_dimension() == 768
-
-    text_specific = "hello specific"
-    embedding_specific = embedder_specific.embed(text_specific)
-    mock_specific_model_instance.encode.assert_called_once_with(text_specific, convert_to_numpy=True)
-    assert isinstance(embedding_specific, np.ndarray)
-    assert np.array_equal(embedding_specific, np.array([0.5, 0.6]))
-
-    # Check call counts on the constructor mock if needed
-    # For example, to ensure it was called twice (once for global, once for specific)
-    assert the_mocked_constructor.call_count == 2
+    mock_model.encode = MagicMock(side_effect=mock_encode)
+    return mock_model
 
 
-def test_embedder_embed_batch(mocker: MockerFixture):  # Remove decorator, use mocker
-    # 1. Define what our mock SentenceTransformer constructor should return
-    mock_model_instance = MagicMock(name="MockedSTInstance_batch")
-    mock_model_instance.get_sentence_embedding_dimension.return_value = 384
-    # Simulate batch encoding for this test
-    mock_model_instance.encode.return_value = np.array([[0.1, 0.2, 0.3], [0.4, 0.5, 0.6]])
+@pytest.fixture
+def mock_sentence_transformer_class(mock_sentence_transformer_instance):
+    """Mocks the SentenceTransformer class constructor."""
+    mock_class = MagicMock(return_value=mock_sentence_transformer_instance)
+    return mock_class
 
-    # 2. Reload the module to ensure a fresh state for its globals
-    importlib.reload(embedder_module_to_test)
 
-    # 3. Patch SentenceTransformer *directly on the reloaded module object*
-    the_mocked_constructor = mocker.patch.object(
-        embedder_module_to_test,
-        'SentenceTransformer',
-        return_value=mock_model_instance  # When ST() is called, it returns this mock_model_instance
-    )
+# --- Mocks for config module ---
+@pytest.fixture
+def mock_config_getters(mocker):
+    """Mocks the config getter functions used by Embedder."""
+    mocker.patch.object(core_config, 'get_embedding_model_name', return_value=TEST_MODEL_NAME)
+    mocker.patch.object(core_config, 'get_model_embedding_dim', return_value=TEST_MODEL_DIMENSION)
+    # Add mocks for other config getters if Embedder starts using them
 
-    Embedder_reloaded = embedder_module_to_test.Embedder
 
-    # 4. Instantiate the Embedder. This should trigger _load_global_model_if_needed,
-    #    which should now call our patched SentenceTransformer.
-    embedder = Embedder_reloaded()
+# --- Main Test Class ---
+@patch('insight_engine_core.processing.embedder.SentenceTransformer')  # Patch where it's LOOKED UP
+def test_embedder_initialization_default_model(
+        MockSentenceTransformerClass, mock_sentence_transformer_instance, mock_config_getters
+):
+    """Test Embedder initialization with the default model name from (mocked) config."""
+    MockSentenceTransformerClass.return_value = mock_sentence_transformer_instance
 
-    # 5. Verify the patched constructor was called for the global model
-    the_mocked_constructor.assert_called_once_with(EMBEDDING_MODEL_NAME)
+    embedder = Embedder()
 
-    # 6. Verify the embedder instance is using our mock_model_instance
-    assert embedder.model is mock_model_instance, \
-        f"Embedder model is {embedder.model}, expected {mock_model_instance}"
-    assert embedder.get_dimension() == 384
+    # Check that the model name is set correctly from mocked config
+    assert embedder._model_name == TEST_MODEL_NAME
+    # Model should not be loaded yet
+    assert embedder._model_instance is None
+    assert embedder._model_dimension is None  # Dimension is set after load
 
-    texts = ["hello", "world"]
-    embeddings = embedder.embed_batch(texts)
+    # Trigger model load by getting dimension
+    dimension = embedder.get_dimension()
+    assert dimension == TEST_MODEL_DIMENSION
+    assert embedder._model_instance is mock_sentence_transformer_instance
+    MockSentenceTransformerClass.assert_called_once_with(TEST_MODEL_NAME)
 
-    # 7. Assert that the encode method on our mock_model_instance was called correctly
-    mock_model_instance.encode.assert_called_once_with(texts,
-                                                       convert_to_numpy=True, show_progress_bar=False)
+
+@patch('insight_engine_core.processing.embedder.SentenceTransformer')
+def test_embedder_initialization_specific_model(
+        MockSentenceTransformerClass, mock_sentence_transformer_instance, mock_config_getters
+        # mock_config_getters might not be strictly needed if specific model overrides default
+):
+    """Test Embedder initialization with a specific model name."""
+    MockSentenceTransformerClass.return_value = mock_sentence_transformer_instance
+    specific_model = "specific-test-model"
+
+    embedder = Embedder(model_name=specific_model)
+
+    assert embedder._model_name == specific_model
+    assert embedder._model_instance is None  # Not loaded yet
+
+    # Trigger model load
+    dimension = embedder.get_dimension()
+    assert dimension == TEST_MODEL_DIMENSION
+    assert embedder._model_instance is mock_sentence_transformer_instance
+    MockSentenceTransformerClass.assert_called_once_with(specific_model)
+
+
+@patch('insight_engine_core.processing.embedder.SentenceTransformer')
+def test_embedder_get_dimension(
+        MockSentenceTransformerClass, mock_sentence_transformer_instance, mock_config_getters
+):
+    """Test get_dimension method, including lazy loading."""
+    MockSentenceTransformerClass.return_value = mock_sentence_transformer_instance
+    embedder = Embedder()  # Uses default mocked model name
+
+    # First call loads the model
+    dimension = embedder.get_dimension()
+    assert dimension == TEST_MODEL_DIMENSION
+    assert embedder._model_instance is mock_sentence_transformer_instance
+    MockSentenceTransformerClass.assert_called_once_with(TEST_MODEL_NAME)
+    mock_sentence_transformer_instance.get_sentence_embedding_dimension.assert_called_once()
+
+    # Second call should use cached dimension and not reload
+    mock_sentence_transformer_instance.get_sentence_embedding_dimension.reset_mock()  # Reset for this check
+    dimension_again = embedder.get_dimension()
+    assert dimension_again == TEST_MODEL_DIMENSION
+    mock_sentence_transformer_instance.get_sentence_embedding_dimension.assert_not_called()  # Should not be called again
+
+
+@patch('insight_engine_core.processing.embedder.SentenceTransformer')
+def test_embedder_embed_single_text(
+        MockSentenceTransformerClass, mock_sentence_transformer_instance, mock_config_getters
+):
+    """Test embedding a single text."""
+    MockSentenceTransformerClass.return_value = mock_sentence_transformer_instance
+    embedder = Embedder()
+    test_text = "This is a test."
+
+    embedding = embedder.embed(test_text)
+
+    assert isinstance(embedding, np.ndarray)
+    assert embedding.shape == (TEST_MODEL_DIMENSION,)
+    mock_sentence_transformer_instance.encode.assert_called_once_with(test_text)
+
+
+@patch('insight_engine_core.processing.embedder.SentenceTransformer')
+def test_embedder_embed_batch_texts(
+        MockSentenceTransformerClass, mock_sentence_transformer_instance, mock_config_getters
+):
+    """Test embedding a batch of texts."""
+    MockSentenceTransformerClass.return_value = mock_sentence_transformer_instance
+    embedder = Embedder()
+    test_texts = ["Text 1.", "Text 2.", "Text 3."]
+
+    embeddings = embedder.embed_batch(test_texts)
+
     assert isinstance(embeddings, np.ndarray)
-    assert embeddings.shape == (2, 3)  # As per our mock's encode.return_value
-    assert np.array_equal(embeddings[0], np.array([0.1, 0.2, 0.3]))
-    assert np.array_equal(embeddings[1], np.array([0.4, 0.5, 0.6]))
-
-
-def test_embedder_global_model_load_fails(mocker: MockerFixture, capsys):
-    # Reload the module to reset its global state (_model_instance, _model_load_error)
-    importlib.reload(embedder_module_to_test)
-
-    # Patch SentenceTransformer ON THE RELOADED MODULE to raise an error
-    mock_st_constructor = mocker.patch.object(
-        embedder_module_to_test,
-        'SentenceTransformer',
-        side_effect=Exception("Simulated global model load error")  # This makes ST() fail
+    assert embeddings.shape == (len(test_texts), TEST_MODEL_DIMENSION)
+    mock_sentence_transformer_instance.encode.assert_called_once_with(
+        test_texts,
+        batch_size=embedder.batch_size,  # or the default batch_size if not overridden
+        show_progress_bar=False
     )
 
-    Embedder_reloaded = embedder_module_to_test.Embedder
 
-    # This call to Embedder_reloaded() should:
-    # 1. Trigger _load_global_model_if_needed()
-    # 2. _load_global_model_if_needed() calls SentenceTransformer() which is mocked to raise Exception
-    # 3. The Exception should be caught, and _model_load_error should be set in embedder_module_to_test
-    # 4. The Embedder constructor should then see _model_load_error is set and raise the RuntimeError
-    with pytest.raises(RuntimeError, match="Global embedding model .* previously failed to load"):
-        Embedder_reloaded()
+@patch('insight_engine_core.processing.embedder.SentenceTransformer')
+def test_embedder_embed_empty_batch(
+        MockSentenceTransformerClass, mock_sentence_transformer_instance, mock_config_getters
+):
+    """Test embedding an empty batch."""
+    MockSentenceTransformerClass.return_value = mock_sentence_transformer_instance
+    embedder = Embedder()
 
-
-def test_embedder_instance_specific_model_load_fails(mocker: MockerFixture, capsys):  # Type hint mocker
-    # --- Setup for successful global model mock load ---
-    mock_global_model_instance = MagicMock(name="GlobalMockInstance")
-    mock_global_model_instance.get_sentence_embedding_dimension.return_value = 384
-
-    # This will be the side effect for the SentenceTransformer constructor
-    def constructor_side_effect_for_test(model_name_arg):
-        print(f"Mock ST Constructor called with: {model_name_arg}")
-        if model_name_arg == EMBEDDING_MODEL_NAME:
-            print("Returning mock_global_model_instance")
-            return mock_global_model_instance
-        elif model_name_arg == "specific_fail_model":
-            print("Raising error for specific_fail_model")
-            raise Exception("Specific model load error")
-        print(f"Unexpected model name '{model_name_arg}', returning new MagicMock")
-        return MagicMock(name=f"UnexpectedMock_{model_name_arg}")
-
-    # 1. Reload the module FIRST to get a fresh instance of it
-    importlib.reload(embedder_module_to_test)
-
-    # 2. NOW, patch SentenceTransformer *on the reloaded module object*
-    #    The 'SentenceTransformer' name must exist as an import in embedder_module_to_test.
-    mock_st_constructor = mocker.patch.object(
-        embedder_module_to_test,
-        'SentenceTransformer',  # The name 'SentenceTransformer' as imported in embedder.py
-        side_effect=constructor_side_effect_for_test
-    )
-
-    Embedder_reloaded = embedder_module_to_test.Embedder
-
-    # 3. Test global model loading path
-    embedder_with_global = Embedder_reloaded()
-
-    assert embedder_with_global.model is mock_global_model_instance, \
-        f"Expected global model to be mock, got {embedder_with_global.model}"
-    assert embedder_with_global.get_dimension() == 384
-    mock_st_constructor.assert_any_call(EMBEDDING_MODEL_NAME)
-
-    # --- Setup for instance-specific model load failure ---
-    # The mock_st_constructor and its side_effect are still active.
-    with pytest.raises(RuntimeError, match="Failed to load instance-specific embedding model 'specific_fail_model'"):
-        Embedder_reloaded(model_name="specific_fail_model")
-
-    mock_st_constructor.assert_any_call("specific_fail_model")
+    embeddings = embedder.embed_batch([])
+    assert isinstance(embeddings, np.ndarray)
+    assert embeddings.shape == (0,)  # or (0, TEST_MODEL_DIMENSION) depending on np.array([]) behavior
+    mock_sentence_transformer_instance.encode.assert_not_called()
 
 
-# Optional: An integration test (mark it to be skipped by default or run separately)
-# This test would actually download and use the real model.
-@pytest.mark.integration
-def test_embedder_real_model_integration():
-    pytest.importorskip("sentence_transformers")  # Skip if lib not installed
-    pytest.importorskip("torch")
-    from insight_engine_core.processing.embedder import Embedder, EMBEDDING_MODEL_NAME
+@patch('insight_engine_core.processing.embedder.SentenceTransformer')
+def test_embedder_model_load_failure(
+        MockSentenceTransformerClass, mock_config_getters  # No mock_sentence_transformer_instance here
+):
+    """Test behavior when model loading fails."""
+    load_error_message = "Simulated model load failure"
+    MockSentenceTransformerClass.side_effect = ConnectionError(load_error_message)  # Simulate a typical error
 
-    try:
-        embedder = Embedder(model_name=EMBEDDING_MODEL_NAME)  # Use the default configured model
-        assert embedder.model is not None
-        assert embedder.get_dimension() is not None
+    embedder = Embedder()  # Uses default mocked model name
 
-        text = "This is a real integration test."
-        embedding = embedder.embed(text)
-        assert isinstance(embedding, np.ndarray)
-        assert embedding.shape == (embedder.get_dimension(),)
-    except Exception as e:
-        pytest.fail(f"Embedder integration test failed: {e}")
+    # Attempting to use the embedder should raise RuntimeError
+    with pytest.raises(RuntimeError, match=f"Cannot embed: Model '{TEST_MODEL_NAME}' failed to load.") as excinfo:
+        embedder.embed("This will fail.")
+    assert isinstance(excinfo.value.__cause__, ConnectionError)  # Check the original cause
+    assert load_error_message in str(excinfo.value.__cause__)
+
+    # Check if get_dimension falls back to config after load error
+    # The Embedder tries to set _model_dimension from config even on load failure
+    dimension_after_fail = embedder.get_dimension()
+    assert dimension_after_fail == TEST_MODEL_DIMENSION  # From mocked config.get_model_embedding_dim
+    assert embedder._model_load_error is not None
+    assert isinstance(embedder._model_load_error, ConnectionError)
+
+
+@patch('insight_engine_core.processing.embedder.SentenceTransformer')
+def test_embedder_model_get_dimension_returns_none(
+        MockSentenceTransformerClass, mock_sentence_transformer_instance, mock_config_getters
+):
+    """Test when SentenceTransformer.get_sentence_embedding_dimension returns None."""
+    mock_sentence_transformer_instance.get_sentence_embedding_dimension.return_value = None  # Simulate problematic model
+    MockSentenceTransformerClass.return_value = mock_sentence_transformer_instance
+
+    embedder = Embedder()
+
+    # get_dimension should fallback to config in this case
+    dimension = embedder.get_dimension()
+    assert dimension == TEST_MODEL_DIMENSION  # From mocked config.get_model_embedding_dim
+    assert embedder._model_dimension == TEST_MODEL_DIMENSION
+
+
+# Optional: Integration test (marked to be skipped by default or run selectively)
+# This would not mock SentenceTransformer and would actually download a small model.
+# It also wouldn't mock config, relying on a .env file or environment variables.
+@pytest.mark.integration_embedder  # Custom marker, configure in pytest.ini
+def test_embedder_integration_actual_model():
+    """
+    Integration test that actually loads a small model.
+    Requires network access and sentence-transformers installed.
+    Relies on EMBEDDING_MODEL_NAME being set in .env or environment
+    to a small, fast-loading model like 'sentence-transformers/all-MiniLM-L6-v2'.
+    """
+    # No mocking of SentenceTransformer or config here.
+    # Ensure your test environment (e.g., .env file for insight_engine_core tests)
+    # sets EMBEDDING_MODEL_NAME and MODEL_EMBEDDING_DIM appropriately.
+
+    # For this test, let's explicitly use a known small model if config isn't set for it
+    # Or, rely on the config.get_embedding_model_name() to provide a real one.
+    model_name_for_integration = core_config.get_embedding_model_name()
+    expected_dim_for_integration = core_config.get_model_embedding_dim()
+
+    if "all-MiniLM-L6-v2" not in model_name_for_integration:  # Default to a known small one if config isn't specific
+        model_name_for_integration = "sentence-transformers/all-MiniLM-L6-v2"
+        expected_dim_for_integration = 384
+
+    print(f"Running embedder integration test with model: {model_name_for_integration}")
+    embedder = Embedder(model_name=model_name_for_integration)
+
+    dimension = embedder.get_dimension()
+    assert dimension == expected_dim_for_integration  # Check against known dimension for the model
+
+    embedding = embedder.embed("Integration test sentence.")
+    assert isinstance(embedding, np.ndarray)
+    assert embedding.shape == (dimension,)
+
+    batch_embeddings = embedder.embed_batch(["Batch text 1", "Batch text 2 for integration."])
+    assert isinstance(batch_embeddings, np.ndarray)
+    assert batch_embeddings.shape == (2, dimension)
+    print(f"Embedder integration test with {model_name_for_integration} passed.")

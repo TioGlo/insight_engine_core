@@ -5,7 +5,8 @@ from pytest_mock import MockerFixture
 from sqlalchemy.orm import Session
 
 # Imports from your project
-from insight_engine_core.config import DATABASE_URL, EMBEDDING_MODEL_NAME
+# from insight_engine_core.config import DATABASE_URL, EMBEDDING_MODEL_NAME
+from insight_engine_core import config as core_config
 from insight_engine_core.database.models import Base, DataSource, RawDataItem, ProcessedText, TextChunk  # All models
 from insight_engine_core.database.db_utils import init_db as core_init_db  # To create tables
 from insight_engine_core.database.vector_store import VectorStore, SimilaritySearchResult
@@ -24,12 +25,14 @@ from insight_engine_core.llm_interface.base_llm import BaseLLM  # For mocking
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 
+DATABASE_URL = core_config.get_database_url()
+EMBEDDING_MODEL_NAME = core_config.get_embedding_model_name()
+
 pytestmark = [
     pytest.mark.integration_rag_pipeline,  # New marker
     pytest.mark.skipif(not DATABASE_URL or not DATABASE_URL.startswith("postgresql"),
                        reason="PostgreSQL DATABASE_URL not configured or not PostgreSQL")
 ]
-
 
 @pytest.fixture(scope="function")
 def pg_rag_session() -> Session:  # Renamed to avoid conflict if in same file as other pg_db_session

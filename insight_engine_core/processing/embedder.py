@@ -1,138 +1,229 @@
-# insight_engine_core/processing/embedder.py (Corrected Lazy Loading)
-from sentence_transformers import SentenceTransformer
-from typing import List, Union
+# insight_engine_core/processing/embedder.py
+import logging
+from typing import List, Union, Optional
 import numpy as np
-from ..config import EMBEDDING_MODEL_NAME  # Assuming this is just the string name
+from sentence_transformers import SentenceTransformer
 
-_model_instance = None
-_model_dimension = None
-_model_load_error = None
-print(f"embedder.py: Initial module load: _model_instance={_model_instance}, _model_load_error={_model_load_error}")
+# Import the config module to access getter functions
+from .. import config
 
-
-def _load_global_model_if_needed():
-    global _model_instance, _model_dimension, _model_load_error
-    print(
-        f"embedder.py: _load_global_model_if_needed called. Current state: _model_instance is {'set' if _model_instance else 'None'}, _model_load_error is {'set' if _model_load_error else 'None'}")
-    if _model_instance is None and _model_load_error is None:
-        try:
-            print(f"Embedder: Lazily loading global model: {EMBEDDING_MODEL_NAME}...")
-            _model_instance = SentenceTransformer(EMBEDDING_MODEL_NAME)  # This will hit our mock
-            _model_dimension = _model_instance.get_sentence_embedding_dimension()
-            print(f"Embedder: Global model '{EMBEDDING_MODEL_NAME}' loaded. Dimension: {_model_dimension}")
-            print(
-                f"embedder.py: After successful load attempt: _model_instance is {'set' if _model_instance else 'None'}, _model_load_error is {'set' if _model_load_error else 'None'}")
-        except Exception as e:
-            _model_load_error = e
-            print(f"Embedder: Error loading global model '{EMBEDDING_MODEL_NAME}': {e}")
-            print(
-                f"embedder.py: After FAILED load attempt: _model_instance is {'set' if _model_instance else 'None'}, _model_load_error is now: {_model_load_error}")
-    else:
-        print("embedder.py: _load_global_model_if_needed: Skipping load, already attempted.")
+logger = logging.getLogger(__name__)
 
 
 class Embedder:
-    def __init__(self, model_name: str = None):
-        self.model = None
-        self.dimension = None
-        print(
-            f"Embedder.__init__: Called. model_name='{model_name}'. Initial module state: _model_instance is {'set' if _model_instance else 'None'}, _model_load_error is {'set' if _model_load_error else 'None'}")
+    """
+    Handles text embedding using a SentenceTransformer model.
+    The model is lazy-loaded upon first use.
+    """
 
-        if model_name:
-            # ... (instance specific logic - ensure this also uses the mocked SentenceTransformer for its own calls) ...
+    def __init__(self, model_name: Optional[str] = None, batch_size: int = 32):
+        """
+        Initializes the Embedder.
+
+        Args:
+            model_name (Optional[str]): The name of the SentenceTransformer model to use.
+                                        If None, uses the default model from config.
+            batch_size (int): The batch size for embedding.
+        """
+        # Determine the model name: use provided or fallback to config default
+        self._model_name: str = model_name or config.get_embedding_model_name()
+        self.batch_size: int = batch_size
+
+        self._model_instance: Optional[SentenceTransformer] = None
+        self._model_dimension: Optional[int] = None
+        self._model_load_error: Optional[Exception] = None
+
+        logger.debug(f"Embedder initialized for model: {self._model_name}. Model not yet loaded.")
+
+    def _load_model_if_needed(self):
+        """
+        Lazily loads the SentenceTransformer model if it hasn't been loaded yet
+        or if a previous attempt failed.
+        """
+        if self._model_instance is None and self._model_load_error is None:
+            logger.info(f"Embedder: Lazily loading model: {self._model_name}...")
             try:
-                print(f"Embedder (instance): Loading specific model: {model_name}...")
-                self.model = SentenceTransformer(model_name)  # This will be mocked in tests
-                self.dimension = self.model.get_sentence_embedding_dimension()
-                print(f"Embedder (instance): Model '{model_name}' loaded. Dimension: {self.dimension}")
-            except Exception as e:
-                raise RuntimeError(f"Failed to load instance-specific embedding model '{model_name}': {e}")
-        else:  # Use the global model
-            _load_global_model_if_needed()
-            print(
-                f"Embedder.__init__ (global path): After _load_global_model_if_needed: _model_instance is {'set' if _model_instance else 'None'}, _model_load_error is {'set' if _model_load_error else 'None'}")
-            if _model_instance:
-                self.model = _model_instance
-                self.dimension = _model_dimension
-            elif _model_load_error:
-                raise RuntimeError(
-                    f"Global embedding model '{EMBEDDING_MODEL_NAME}' previously failed to load: {_model_load_error}")
-            else:
-                raise RuntimeError(
-                    f"Global embedding model '{EMBEDDING_MODEL_NAME}' could not be loaded and no specific model provided (should not happen if _load_global_model_if_needed ran).")
-        print(f"Embedder.__init__: Exiting. self.model is {'set' if self.model else 'None'}")
+                self._model_instance = SentenceTransformer(self._model_name)
+                # Determine and store the dimension once the model is loaded
+                dimension_from_model = self._model_instance.get_sentence_embedding_dimension()
+                if dimension_from_model is None:
+                    logger.error(f"Model {self._model_name} returned None for dimension. This is unexpected.")
+                    # Fallback to configured dimension if model doesn't provide one (should not happen)
+                    self._model_dimension = config.get_model_embedding_dim()
+                    logger.warning(
+                        f"Using configured dimension {self._model_dimension} as fallback for {self._model_name}.")
+                else:
+                    self._model_dimension = dimension_from_model
 
-    def embed(self, text: str) -> Union[np.ndarray, None]:
-        if not self.model:
-            raise RuntimeError("Embedder model not initialized properly.")
+                logger.info(f"Embedder: Model '{self._model_name}' loaded. Dimension: {self._model_dimension}")
+
+            except Exception as e:
+                self._model_load_error = e
+                logger.error(f"Embedder: Error loading model '{self._model_name}': {e}", exc_info=True)
+                # If model loading fails, we might still want to know the expected dimension from config
+                # This helps if other parts of the system (like DB schema) need the dimension
+                # even if embedding itself will fail.
+                try:
+                    self._model_dimension = config.get_model_embedding_dim()
+                    logger.info(
+                        f"Embedder: Setting dimension to configured {self._model_dimension} despite model load failure for {self._model_name}.")
+                except Exception as config_e:
+                    logger.error(
+                        f"Embedder: Could not even get configured dimension after model load failure: {config_e}")
+                    self._model_dimension = None  # Truly unknown
+
+    def embed(self, text: str) -> np.ndarray:
+        """
+        Embeds a single piece of text.
+
+        Args:
+            text (str): The text to embed.
+
+        Returns:
+            np.ndarray: The embedding vector.
+
+        Raises:
+            RuntimeError: If the model could not be loaded or if embedding fails.
+        """
+        self._load_model_if_needed()
+        if self._model_load_error:
+            raise RuntimeError(f"Cannot embed: Model '{self._model_name}' failed to load.") from self._model_load_error
+        if not self._model_instance:
+            # This case should ideally be caught by _model_load_error, but as a safeguard:
+            raise RuntimeError(
+                f"Cannot embed: Model '{self._model_name}' is not loaded and no load error was recorded.")
+
         try:
-            embedding = self.model.encode(text, convert_to_numpy=True)
+            # convert_to_numpy=True is default for SentenceTransformer.encode
+            embedding = self._model_instance.encode(text)
             return embedding
         except Exception as e:
-            print(f"Embedder: Error during text embedding: {e}")
-            return None  # Or re-raise
+            logger.error(f"Embedder: Error during text embedding with model '{self._model_name}': {e}", exc_info=True)
+            raise RuntimeError(f"Embedding failed for model '{self._model_name}'.") from e
 
-    def embed_batch(self, texts: List[str]) -> Union[List[np.ndarray], None]:
-        if not self.model:
-            raise RuntimeError("Embedder model not initialized properly.")
+    def embed_batch(self, texts: List[str]) -> np.ndarray:
+        """
+        Embeds a batch of texts.
+
+        Args:
+            texts (List[str]): A list of texts to embed.
+
+        Returns:
+            np.ndarray: A 2D NumPy array where each row is an embedding.
+
+        Raises:
+            RuntimeError: If the model could not be loaded or if embedding fails.
+        """
         if not texts:
-            return []
+            return np.array([])  # Return empty array for empty list
+
+        self._load_model_if_needed()
+        if self._model_load_error:
+            raise RuntimeError(
+                f"Cannot embed batch: Model '{self._model_name}' failed to load.") from self._model_load_error
+        if not self._model_instance:
+            raise RuntimeError(
+                f"Cannot embed batch: Model '{self._model_name}' is not loaded and no load error was recorded.")
+
         try:
-            embeddings = self.model.encode(texts, convert_to_numpy=True, show_progress_bar=False)
+            embeddings = self._model_instance.encode(
+                texts,
+                batch_size=self.batch_size,
+                show_progress_bar=False  # Typically off for library use
+            )
             return embeddings
         except Exception as e:
-            print(f"Embedder: Error during batch text embedding: {e}")
-            return None  # Or re-raise
+            logger.error(f"Embedder: Error during batch text embedding with model '{self._model_name}': {e}",
+                         exc_info=True)
+            raise RuntimeError(f"Batch embedding failed for model '{self._model_name}'.") from e
 
-    def get_dimension(self) -> Union[int, None]:
-        return self.dimension
+    def get_dimension(self) -> int:
+        """
+        Returns the embedding dimension of the model.
+        Loads the model if it hasn't been loaded yet.
 
+        Returns:
+            int: The embedding dimension.
 
-# This function can be called by other parts of the system if they need the dimension
-# AFTER an Embedder instance has ensured the model is loaded.
-# Or, models.py can just use a configured value.
-def get_embedding_dimension_for_model(model_name_to_check: str = EMBEDDING_MODEL_NAME) -> int:
-    """
-    Utility to get dimension. Loads model if not already loaded.
-    Preferably, dimension is known from config or a dedicated model info service.
-    """
-    if model_name_to_check == EMBEDDING_MODEL_NAME:
-        _load_global_model_if_needed()
-        if _model_dimension is not None:
-            return _model_dimension
-        elif _model_load_error:
+        Raises:
+            RuntimeError: If the dimension cannot be determined (e.g., model load failed and config is also unavailable).
+        """
+        self._load_model_if_needed()  # Ensures _model_dimension is set (or attempted)
+
+        if self._model_dimension is not None:
+            return self._model_dimension
+
+        # If _model_dimension is still None here, it means loading failed AND fallback to config failed.
+        # This is a critical state.
+        if self._model_load_error:
             raise RuntimeError(
-                f"Cannot get dimension, global model '{EMBEDDING_MODEL_NAME}' failed to load: {_model_load_error}")
+                f"Cannot determine dimension for model '{self._model_name}'. Model failed to load, and configured dimension also unavailable."
+            ) from self._model_load_error
         else:
-            raise RuntimeError(f"Cannot get dimension, global model '{EMBEDDING_MODEL_NAME}' not loaded.")
-
-    else:  # For a non-default model, load it temporarily to get dimension
-        try:
-            temp_model = SentenceTransformer(model_name_to_check)
-            return temp_model.get_sentence_embedding_dimension()
-        except Exception as e:
-            raise RuntimeError(f"Could not load model '{model_name_to_check}' to get dimension: {e}")
+            # This state should ideally not be reached if _load_model_if_needed works correctly.
+            raise RuntimeError(
+                f"Cannot determine dimension for model '{self._model_name}'. Model not loaded and dimension unknown."
+            )
 
 
-# REMOVE THE FOLLOWING LINE or ensure it's only for direct script execution:
-# EMBEDDING_DIMENSION = get_global_embedding_dimension() # THIS WAS THE PROBLEM
-
+# --- Main execution for simple testing ---
 if __name__ == '__main__':
-    # Test the embedder
+    # Configure basic logging for testing
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(name)s - %(message)s')
+
+    # To test this, you might need a .env file in the insight_engine_core directory
+    # or have EMBEDDING_MODEL_NAME set in your environment.
+    # Example .env content:
+    # EMBEDDING_MODEL_NAME=sentence-transformers/all-MiniLM-L6-v2
+
+    print("\n--- Testing Embedder ---")
     try:
-        print("\n--- Testing Default Global Model Instance ---")
-        # This will trigger the lazy load if not already loaded
+        # Test with default model from config
+        print("\n1. Testing with default model (from config)...")
         default_embedder = Embedder()
-        print(f"Default embedder dimension: {default_embedder.get_dimension()}")
 
-        example_text = "This is a test sentence."
+        # First call to get_dimension will trigger model load
+        dim = default_embedder.get_dimension()
+        print(f"   Dimension (default model): {dim}")
+
+        example_text = "This is a test sentence for the default embedder."
         embedding = default_embedder.embed(example_text)
-        if embedding is not None:
-            print(f"Embedding (first 5 dims): {embedding[:5]}")
+        print(f"   Embedding shape (default model): {embedding.shape}")
+        print(f"   Embedding (first 5 dims): {embedding[:5]}")
 
-        # Test getting dimension via utility function
-        # dim_util = get_embedding_dimension_for_model() # This will use the already loaded global model
-        # print(f"Dimension from utility: {dim_util}")
+        example_batch = ["Batch sentence 1.", "Another sentence for the batch."]
+        batch_embeddings = default_embedder.embed_batch(example_batch)
+        print(f"   Batch embeddings shape (default model): {batch_embeddings.shape}")
 
-    except RuntimeError as e:
-        print(f"Error during __main__ test: {e}")
+        # Test with a specific model (if you have another small one, or it will re-use if same as default)
+        # For this test, let's use the same as default to ensure it works.
+        # If EMBEDDING_MODEL_NAME in .env is different, this will load another model.
+        specific_model_name = config.get_embedding_model_name()  # Using the same for simplicity
+        print(f"\n2. Testing with specific model: {specific_model_name}...")
+        specific_embedder = Embedder(model_name=specific_model_name)
+
+        dim_specific = specific_embedder.get_dimension()
+        print(f"   Dimension (specific model): {dim_specific}")
+
+        embedding_specific = specific_embedder.embed("Test sentence for specific model.")
+        print(f"   Embedding shape (specific model): {embedding_specific.shape}")
+
+        # Test scenario: Model fails to load (e.g., invalid model name)
+        print("\n3. Testing with an invalid model name...")
+        invalid_model_name = "this-model-does-not-exist-hopefully"
+        try:
+            error_embedder = Embedder(model_name=invalid_model_name)
+            # The error will be raised when trying to use the embedder
+            error_embedder.embed("This should fail.")
+        except RuntimeError as e:
+            print(f"   Successfully caught expected error for invalid model: {e}")
+            # Check if get_dimension still provides configured fallback
+            try:
+                fallback_dim = error_embedder.get_dimension()  # Will try to get from config
+                print(f"   Dimension from config after load error (invalid model): {fallback_dim}")
+            except RuntimeError as e_dim:
+                print(f"   Could not get dimension even from config after load error: {e_dim}")
+
+
+    except Exception as e:
+        logger.error(f"Error during __main__ test: {e}", exc_info=True)

@@ -2,12 +2,18 @@ from sqlalchemy import Column, Integer, String, Text, DateTime, JSON, ForeignKey
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from pgvector.sqlalchemy import Vector  # For PGVector
-from insight_engine_core.config import MODEL_EMBEDDING_DIM
+#from insight_engine_core.config import MODEL_EMBEDDING_DIM
 
 # Import THE Base instance from database/__init__.py
 from . import Base  # This should get Base from database/__init__.py
+from .. import config # For MODEL_EMBEDDING_DIM
 
-print(f"models.py: Using embedding dimension for Vector type: {MODEL_EMBEDDING_DIM}")
+# Debug print to confirm which Base is used
+MODEL_EMBEDDING_DIM = config.get_model_embedding_dim() # Use the getter
+print(f"CORE_DB_MODELS (insight_engine_core/database/models.py): Defining models using Base ID: {id(Base)}, MetaData ID: {id(Base.metadata)}")
+print(f"CORE_DB_MODELS: Using embedding dimension for Vector type: {MODEL_EMBEDDING_DIM}")
+print(f"CORE_DB_MODELS: Before core models, tables: {list(Base.metadata.tables.keys())}")
+
 
 
 class DataSource(Base):
@@ -123,36 +129,3 @@ class TextChunk(Base):
     def __repr__(self):
         return f"<TextChunk(id={self.id}, processed_text_id={self.processed_text_source_id}, order={self.chunk_order}, len='{len(self.chunk_text)}')>"
 
-
-# --- Application-Specific Models (Example for Niche Hunter - these might live in niche_hunter_app later) ---
-# For now, let's keep them here to ensure the core RAG can support them.
-
-class IdentifiedNiche(Base):
-    """Represents a potential niche identified by the system."""
-    __tablename__ = "identified_niches"
-
-    id = Column(Integer, primary_key=True, index=True)
-    name = Column(String, unique=True, index=True, nullable=False)
-    description = Column(Text, nullable=True)
-    seed_keywords = Column(JSON, nullable=True, comment="Keywords that led to this niche")
-    # Link to relevant DataSources or RawDataItems that informed this niche
-    # This could be a many-to-many relationship or a JSONB array of IDs
-
-    # Scores and analysis results
-    trend_score = Column(Integer, nullable=True)
-    competition_score = Column(Integer, nullable=True)  # Lower might be better
-    monetization_score = Column(Integer, nullable=True)
-    overall_opportunity_score = Column(Integer, nullable=True, index=True)
-
-    analysis_summary = Column(Text, nullable=True)  # LLM generated summary
-    status = Column(String, default="new", index=True)  # e.g., new, analyzing, validated, rejected
-
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    last_analyzed_at = Column(DateTime(timezone=True), onupdate=func.now())
-
-    # content_outlines = relationship("ContentOutline", back_populates="niche")
-
-    def __repr__(self):
-        return f"<IdentifiedNiche(id={self.id}, name='{self.name}', score='{self.overall_opportunity_score}')>"
-
-# We can add ContentOutline, NicheMetrics etc. later as needed.

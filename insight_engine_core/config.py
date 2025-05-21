@@ -1,46 +1,74 @@
+# insight_engine_core/config.py
 import os
+import logging
+from dotenv import load_dotenv
 
-# This library expects environment variables to be set by the consuming application.
-# It can define defaults here if environment variables are not found.
+logger = logging.getLogger(__name__)
 
-# --- Database Configuration ---
-# DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://user:password@host:port/default_db_name_if_not_set")
-# insight_engine_core/insight_engine_core/config.py
-DATABASE_URL = os.getenv("DATABASE_URL")
-if DATABASE_URL is None:
-    # Option A: Raise an error if not set by consuming app
-    # raise EnvironmentError("DATABASE_URL environment variable not set by the application.")
-    # Option B: Log a warning and proceed (might fail later, as it did)
-    print("WARNING: insight_engine_core.config - DATABASE_URL not set. Engine creation might fail.")
-    DATABASE_URL = "postgresql://invalid_user:invalid_pass@invalid_host:0000/invalid_db" # A clearly invalid default
+load_dotenv()
 
-# --- Embedding Model Configuration ---
-EMBEDDING_MODEL_NAME = os.getenv("EMBEDDING_MODEL_NAME", "all-MiniLM-L6-v2")
-# Try to get dimension from an env var, or set a default based on default model
-# This is still tricky for model definition, as models.py needs this at import time.
-# A common pattern is to require the app to configure this or use a fixed known dimension.
-DEFAULT_EMBEDDING_DIM = 384 # For all-MiniLM-L6-v2
-MODEL_EMBEDDING_DIM = int(os.getenv("EMBEDDING_DIMENSION", DEFAULT_EMBEDDING_DIM))
+# Add a print statement at the very top of this module to see when it's imported
+print(f"DEBUG [insight_engine_core/config.py]: Module imported. Current DATABASE_URL from os.environ: {os.environ.get('DATABASE_URL')}")
 
-# --- LLM Configuration ---
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")
-# Add other LLM API keys or local model paths here
+def get_database_url():
+    # Add a print inside the function to see when it's called and what os.getenv sees
+    env_db_url = os.getenv("DATABASE_URL")
+    print(f"DEBUG [insight_engine_core/config.py - get_database_url()]: Called. os.getenv('DATABASE_URL') returned: {env_db_url}")
+    if not env_db_url: # Checks for None or empty string
+        logger.warning("DATABASE_URL not set in environment. Using default for get_database_url().")
+        return "postgresql://test_user:test_pass@localhost:5432/test_insight_engine_db" # Fallback
+    return env_db_url
 
-# --- Other API Keys ---
-PERPLEXITY_API_KEY = os.getenv("PERPLEXITY_API_KEY")
-# REDDIT_CLIENT_ID = os.getenv("REDDIT_CLIENT_ID")
-# REDDIT_CLIENT_SECRET = os.getenv("REDDIT_CLIENT_SECRET")
-# REDDIT_USER_AGENT = os.getenv("REDDIT_USER_AGENT", "InsightEngine/0.1 by YourUsername")
+def get_embedding_model_name():
+    env_model_name = os.getenv("EMBEDDING_MODEL_NAME", "sentence-transformers/all-MiniLM-L6-v2")
+    print(f"DEBUG [insight_engine_core/config.py - get_embedding_model_name()]: Called. Returning: {env_model_name}")
+    return env_model_name
 
+def get_model_embedding_dim():
+    model_name = get_embedding_model_name() # This will call the function above
+    default_dim_for_model = 384 # Default
+    if model_name == "sentence-transformers/all-MiniLM-L6-v2":
+        default_dim_for_model = 384
+    # Add other known models here
 
-# --- Basic Logging Configuration (can be expanded in utils/logging_setup.py) ---
-LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
+    try:
+        # Prefer env var if set and valid
+        env_dim_str = os.getenv("MODEL_EMBEDDING_DIM")
+        if env_dim_str:
+            print(f"DEBUG [insight_engine_core/config.py - get_model_embedding_dim()]: MODEL_EMBEDDING_DIM from env: {env_dim_str}")
+            return int(env_dim_str)
+        # Else, use default for the determined model name
+        print(f"DEBUG [insight_engine_core/config.py - get_model_embedding_dim()]: MODEL_EMBEDDING_DIM not in env, using default for model '{model_name}': {default_dim_for_model}")
+        return default_dim_for_model
+    except ValueError:
+        logger.error(f"MODEL_EMBEDDING_DIM from env ('{os.getenv('MODEL_EMBEDDING_DIM')}') is not an int. Using default {default_dim_for_model}.")
+        return default_dim_for_model
 
+def get_openai_api_key():
+    key = os.getenv("OPENAI_API_KEY")
+    print(f"DEBUG [insight_engine_core/config.py - get_openai_api_key()]: Called. Key is {'SET' if key else 'NOT SET'}")
+    return key
 
-if __name__ == '__main__':
-    # For testing the config loading
-    print(f"DATABASE_URL: {DATABASE_URL}")
-    print(f"EMBEDDING_MODEL_NAME: {EMBEDDING_MODEL_NAME}")
-    print(f"OPENAI_API_KEY: {'Set' if OPENAI_API_KEY else 'Not Set'}")
-    print(f"LOG_LEVEL: {LOG_LEVEL}")
+def get_openai_model_name():
+    return os.getenv("OPENAI_MODEL_NAME", "gpt-4o-mini")
+
+def get_ollama_base_url():
+    return os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+
+def get_ollama_model_name():
+    return os.getenv("OLLAMA_MODEL_NAME", "gemma2:9b-instruct-q8_0") # Updated example
+
+def get_hard_split_threshold_chars():
+    return int(os.getenv("HARD_SPLIT_THRESHOLD_CHARS", "1000"))
+
+# --- REMOVE ALL MODULE-LEVEL ASSIGNMENTS THAT USE os.getenv() ---
+# For example, these should be removed if they were active:
+# DATABASE_URL = os.getenv("DATABASE_URL", ...) # REMOVE
+# EMBEDDING_MODEL_NAME = os.getenv("EMBEDDING_MODEL_NAME", ...) # REMOVE
+# MODEL_EMBEDDING_DIM = int(os.getenv("EMBEDDING_DIMENSION", ...)) # REMOVE
+# OPENAI_API_KEY = os.getenv("OPENAI_API_KEY") # REMOVE
+# OLLAMA_HOST = os.getenv("OLLAMA_HOST", ...) # REMOVE
+# PERPLEXITY_API_KEY = os.getenv("PERPLEXITY_API_KEY") # REMOVE
+
+# You CAN have true constants here if they don't depend on the environment
+# EXAMPLE_CONSTANT = "some_fixed_value"
